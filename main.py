@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from typing import List
 from pydantic import BaseModel
 from textblob import TextBlob
+from spacy.lang.pt.stop_words import STOP_WORDS
 
 app = FastAPI()
 
@@ -17,7 +18,8 @@ def get_main_topic(messages: List[str]) -> str:
 
     for message in messages:
         doc = nlp(message)
-        tokens = [token.text for token in doc if token.is_alpha]
+        # Filtra palavras que são alfanuméricas e não estão na lista de stopwords
+        tokens = [token.text for token in doc if token.is_alpha and token.text.lower() not in STOP_WORDS]
         all_tokens.extend(tokens)
 
     # Calcula as frequências das palavras
@@ -29,8 +31,8 @@ def get_main_topic(messages: List[str]) -> str:
     return main_topic[0][0] if main_topic else "Tópico não identificado"
 
 def analyze_sentiment(messages: List[str]) -> str:
-    positive_keywords = ["satisfeito", "excelente", "ótimo", "adorei", "incrível", "parabéns", "feliz", "recomendo"]
-    negative_keywords = ["insatisfeito", "frustrado", "decepcionado", "problemas", "ruim", "péssimo", "dificuldades"]
+    positive_keywords = ["satisfeito", "excelente", "ótimo", "adorei", "incrível", "parabéns", "feliz", "recomendo", "maravilhoso", "fantástico", "surpreendente", "perfeito", "encantador", "impressionante", "ótima escolha", "top", "estou contente", "satisfação total", "muito bom", "espetacular"]
+    negative_keywords = ["insatisfeito", "frustrado", "decepcionado", "problemas", "ruim", "péssimo", "dificuldades", "terrível", "desapontado", "horrível", "odiei", "não recomendo", "arrependido", "muito ruim", "desastroso", "lamentável", "descontente", "péssima escolha", "muito insatisfatório", "causou problemas"]
 
     positive_count = 0
     negative_count = 0
@@ -72,4 +74,4 @@ def analyze_topic(conversation: ConversationInput):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3009)
+    uvicorn.run(app, host="127.0.0.1", port=3009)
