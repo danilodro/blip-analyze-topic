@@ -18,7 +18,7 @@ def get_main_topic(messages: List[str]) -> str:
 
     for message in messages:
         # Remova os prefixos "atendente:" e "cliente:" e, em seguida, tokenize a mensagem
-        message = message.replace("atendente:", "").replace("cliente:", "")
+        message = message.replace("Atendente:", "").replace("Cliente:", "")
         doc = nlp(message)
         
         # Filtra palavras que são alfanuméricas e não estão na lista de stopwords
