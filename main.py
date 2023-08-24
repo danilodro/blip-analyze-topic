@@ -5,6 +5,13 @@ from typing import List
 from pydantic import BaseModel
 from textblob import TextBlob
 from spacy.lang.pt.stop_words import STOP_WORDS
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import Normalizer
 
 app = FastAPI()
 
@@ -13,45 +20,73 @@ nlp = spacy.load("pt_core_news_sm")
 class ConversationInput(BaseModel):
     messages: List[str]
 
-def get_main_topic(messages: List[str]) -> str:
-    all_tokens = []
+nltk.download("stopwords")
+nltk.download("punkt")
 
-    for message in messages:
-        # Remova os prefixos "atendente:" e "cliente:" e, em seguida, tokenize a mensagem
-        message = message.replace("Atendente:", "").replace("Cliente:", "")
-        doc = nlp(message)
-        
-        # Filtra palavras que são alfanuméricas e não estão na lista de stopwords
-        tokens = [token.text for token in doc if token.is_alpha and token.text.lower() not in STOP_WORDS]
-        all_tokens.extend(tokens)
+stop_words_lower = list(STOP_WORDS)
 
-    # Calcula as frequências das palavras
-    word_freq = Counter(all_tokens)
+vectorizer = CountVectorizer(stop_words=stop_words_lower)
 
-    # Encontre a palavra mais comum como tópico principal
-    main_topic = word_freq.most_common(1)
+# palavras irrelevantes p remoção
+irrelevant_keywords = ["cliente", "atendente", "senhor,", "senhora"] 
+
+def get_main_topic(messages: List[str]) -> List[str]:
+    all_messages = [message.replace("Atendente:", "").replace("Cliente:", "") for message in messages]
     
-    return main_topic[0][0] if main_topic else "Tópico não identificado"
+    # Filtra as mensagens que contêm os links do blipmediastore
+    all_messages = [message for message in all_messages if "https://blipmediastore.blob.core.windows.net/secure-medias/" not in message]
+    
+    if not all_messages:
+        return []
+    
+    # fazendo a vetorização do x e do lsa
+    X = vectorizer.fit_transform(all_messages)
+    svd = TruncatedSVD(n_components=1)
+    normalizer = Normalizer(copy=False)
+    lsa = make_pipeline(svd, normalizer)
+    X_lsa = lsa.fit_transform(X)
+    feature_names = vectorizer.get_feature_names_out()
+    main_topic_words = [feature_names[i] for i in svd.components_[0].argsort()[:-10:-1]]
+    
+    # to removendo
+    main_topic_keywords = [word for word in main_topic_words if word.lower() not in irrelevant_keywords and word.lower() not in ["senhor", "senhora", "intelbras", "aceito"]]
+    
+    return main_topic_keywords
+
 
 def get_top_words_by_speaker(messages: List[str]) -> dict:
-    word_freq_by_speaker = defaultdict(Counter)
+    word_freq_by_speaker = {
+        "Cliente": Counter(),
+        "Atendente": Counter()
+    }
+
+    additional_stopwords = [
+        "pra", "vc", "tb", "pq", "p", "ta", "to", "q", "a", "e", "o",
+        "os", "as", "um", "uma", "uns", "umas", "ao", "aos", "na", "nas",
+        "no", "nos", "em", "por", "para", "com", "se", "nao", "mais", "ja",
+        "mas", "me", "te", "nos", "vos", "lhe", "lhes", "se", "que", "porque",
+        "como", "onde", "quando", "isso", "isso", "essa", "esse", "isso", "isso",
+        "estou", "estava", "estaremos", "esteja", "estivesse", "estiver", "estivessemos", "intelbras",
+        "senhor", "senhora", "cliente", "atendente", "de", "nem", "ok"
+    ]
 
     for message in messages:
         if ":" in message:
-            speaker, content = message.split(":", 1)  # Separa o falante do conteúdo
-            content = content.strip()  # Remove espaços extras
+            speaker, content = message.split(":", 1)
+            content = content.strip()
             doc = nlp(content)
-            
-            # Filtra palavras que são alfanuméricas e não estão na lista de stopwords
-            tokens = [token.text.lower() for token in doc if token.is_alpha and token.text.lower() not in STOP_WORDS]
-            
+
+            tokens = [token.text.lower() for token in doc if token.is_alpha]
+            tokens = [token for token in tokens if token not in stop_words_lower]  # tira do CountVectorizer
+            tokens = [token for token in tokens if token not in additional_stopwords]
+
             word_freq_by_speaker[speaker].update(tokens)
 
     top_words_by_speaker = {}
     for speaker, word_freq in word_freq_by_speaker.items():
         top_words = word_freq.most_common(3)
         top_words_by_speaker[speaker] = [word for word, _ in top_words]
-    
+
     return top_words_by_speaker
 
 
@@ -84,7 +119,7 @@ def analyze_sentiment(messages: List[str]) -> str:
 
 @app.post("/analyze_topic/")
 def analyze_topic(conversation: ConversationInput):
-    main_topic = get_main_topic(conversation.messages)
+    main_topic_keywords = get_main_topic(conversation.messages)
     sentiment = analyze_sentiment(conversation.messages)
     
     if sentiment == "positivo":
@@ -93,9 +128,13 @@ def analyze_topic(conversation: ConversationInput):
         sentiment_response = "Sentimento negativo."
     else:
         sentiment_response = "Sentimento neutro."
+    
+    main_topic_keywords = main_topic_keywords[:2]
+    
+    topic_response = f"O tópico principal da conversa é '{main_topic_keywords[0]}'. {sentiment_response}"
+    
+    return {"response": topic_response}
 
-    response = f"O tópico principal da conversa é '{main_topic}'. {sentiment_response}"
-    return {"response": response}
 
 @app.post("/top_words_by_speaker/")
 def top_words_by_speaker_endpoint(conversation: ConversationInput):
