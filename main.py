@@ -1,5 +1,5 @@
 import spacy
-from collections import Counter
+from collections import Counter, defaultdict
 from fastapi import FastAPI, HTTPException
 from typing import List
 from pydantic import BaseModel
@@ -17,7 +17,10 @@ def get_main_topic(messages: List[str]) -> str:
     all_tokens = []
 
     for message in messages:
+        # Remova os prefixos "atendente:" e "cliente:" e, em seguida, tokenize a mensagem
+        message = message.replace("atendente:", "").replace("cliente:", "")
         doc = nlp(message)
+        
         # Filtra palavras que são alfanuméricas e não estão na lista de stopwords
         tokens = [token.text for token in doc if token.is_alpha and token.text.lower() not in STOP_WORDS]
         all_tokens.extend(tokens)
@@ -25,10 +28,32 @@ def get_main_topic(messages: List[str]) -> str:
     # Calcula as frequências das palavras
     word_freq = Counter(all_tokens)
 
-    # Encontra a palavra mais comum como tópico principal
+    # Encontre a palavra mais comum como tópico principal
     main_topic = word_freq.most_common(1)
     
     return main_topic[0][0] if main_topic else "Tópico não identificado"
+
+def get_top_words_by_speaker(messages: List[str]) -> dict:
+    word_freq_by_speaker = defaultdict(Counter)
+
+    for message in messages:
+        if ":" in message:
+            speaker, content = message.split(":", 1)  # Separa o falante do conteúdo
+            content = content.strip()  # Remove espaços extras
+            doc = nlp(content)
+            
+            # Filtra palavras que são alfanuméricas e não estão na lista de stopwords
+            tokens = [token.text.lower() for token in doc if token.is_alpha and token.text.lower() not in STOP_WORDS]
+            
+            word_freq_by_speaker[speaker].update(tokens)
+
+    top_words_by_speaker = {}
+    for speaker, word_freq in word_freq_by_speaker.items():
+        top_words = word_freq.most_common(3)
+        top_words_by_speaker[speaker] = [word for word, _ in top_words]
+    
+    return top_words_by_speaker
+
 
 def analyze_sentiment(messages: List[str]) -> str:
     positive_keywords = ["satisfeito", "excelente", "ótimo", "adorei", "incrível", "parabéns", "feliz", "recomendo", "maravilhoso", "fantástico", "surpreendente", "perfeito", "encantador", "impressionante", "ótima escolha", "top", "estou contente", "satisfação total", "muito bom", "espetacular"]
@@ -71,6 +96,11 @@ def analyze_topic(conversation: ConversationInput):
 
     response = f"O tópico principal da conversa é '{main_topic}'. {sentiment_response}"
     return {"response": response}
+
+@app.post("/top_words_by_speaker/")
+def top_words_by_speaker_endpoint(conversation: ConversationInput):
+    top_words = get_top_words_by_speaker(conversation.messages)
+    return {"top_words_by_speaker": top_words}
 
 if __name__ == "__main__":
     import uvicorn
