@@ -12,6 +12,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import Normalizer
+from gensim import corpora, models
 
 app = FastAPI()
 
@@ -28,7 +29,7 @@ stop_words_lower = list(STOP_WORDS)
 vectorizer = CountVectorizer(stop_words=stop_words_lower)
 
 # palavras irrelevantes p remoção
-irrelevant_keywords = ["cliente", "atendente", "senhor,", "senhora"] 
+irrelevant_keywords = ["cliente", "atendente", "senhor,", "senhora", "ok"] 
 
 def get_main_topic(messages: List[str]) -> List[str]:
     all_messages = [message.replace("Atendente:", "").replace("Cliente:", "") for message in messages]
@@ -49,7 +50,7 @@ def get_main_topic(messages: List[str]) -> List[str]:
     main_topic_words = [feature_names[i] for i in svd.components_[0].argsort()[:-10:-1]]
     
     # to removendo
-    main_topic_keywords = [word for word in main_topic_words if word.lower() not in irrelevant_keywords and word.lower() not in ["senhor", "senhora", "intelbras", "aceito"]]
+    main_topic_keywords = [word for word in main_topic_words if word.lower() not in irrelevant_keywords and word.lower() not in ["senhor", "senhora", "intelbras", "aceito", "ok", "recomendo", "baseado", "olá"]]
     
     return main_topic_keywords
 
@@ -131,7 +132,7 @@ def analyze_topic(conversation: ConversationInput):
     
     main_topic_keywords = main_topic_keywords[:2]
     
-    topic_response = f"O tópico principal da conversa é '{main_topic_keywords[0]}'. {sentiment_response}"
+    topic_response = f"Os tópicos principais da conversa são: '{main_topic_keywords[1]}' e '{main_topic_keywords[0]}'. {sentiment_response}"
     
     return {"response": topic_response}
 
