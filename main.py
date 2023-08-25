@@ -81,12 +81,13 @@ def get_top_words_by_speaker(messages: List[str]) -> dict:
             tokens = [token for token in tokens if token not in stop_words_lower]  # tira do CountVectorizer
             tokens = [token for token in tokens if token not in additional_stopwords]
 
-            word_freq_by_speaker[speaker].update(tokens)
+            word_freq_by_speaker[speaker].update(set(tokens))  # Usar set() para contar palavras únicas
 
     top_words_by_speaker = {}
     for speaker, word_freq in word_freq_by_speaker.items():
         top_words = word_freq.most_common(3)
-        top_words_by_speaker[speaker] = [word for word, _ in top_words]
+        top_words_with_counts = [{"word": word, "count": count} for word, count in top_words]
+        top_words_by_speaker[speaker] = top_words_with_counts
 
     return top_words_by_speaker
 
